@@ -142,6 +142,28 @@
   var briefs = {};
   var settings = { site_url: 'https://www.linovhr.com/', alert_emails: 'digmar@linovhr.com', decay_pct: '20', decay_min_clicks: '20', pos_drop_alert: '3' };
   var stamp = fmt(today) + ' 07:00';
+  function nowStr() { var d = new Date(); return fmt(d) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+  var WP_LABEL = { future: 'Terjadwal', publish: 'Terbit', draft: 'Draft', pending: 'Menunggu review' };
+  var wpPosts = [
+    ['Software HRIS Terbaik 2026: Perbandingan Lengkap', 'future', 2, '09:00', 'Rina', 'HRIS'],
+    ['Cara Menghitung PPh 21 TER untuk Karyawan Baru', 'future', 4, '10:00', 'Dimas', 'Payroll'],
+    ['Talent Management: Pengertian, Proses, dan Contoh', 'future', 7, '09:00', 'Rina', 'Talent'],
+    ['Aplikasi Absensi Online untuk Tim Lapangan', 'future', 9, '13:00', 'Dimas', 'Absensi'],
+    ['Succession Planning: Panduan untuk HR', 'future', 14, '09:00', 'Rina', 'Talent'],
+    ['UMP 2027 Seluruh Provinsi', 'future', -1, '08:00', 'Dimas', 'Payroll'],
+    ['THR Karyawan Kontrak: Aturan Lengkap', 'publish', -3, '09:00', 'Rina', 'Payroll'],
+    ['Contoh KPI Karyawan per Divisi', 'publish', -6, '10:00', 'Dimas', 'Performance'],
+    ['Apa Itu Payroll? Pengertian dan Prosesnya', 'publish', -10, '09:00', 'Rina', 'Payroll'],
+    ['Performance Appraisal: Metode dan Contoh', 'publish', -13, '09:00', 'Dimas', 'Performance'],
+    ['Competency Management untuk Perusahaan', 'draft', -2, '00:00', 'Rina', 'Talent'],
+    ['LMS Software Terbaik untuk Training Karyawan', 'pending', -1, '00:00', 'Dimas', 'Learning'],
+    ['Employee Self Service: Manfaat bagi HR', 'draft', -5, '00:00', 'Rina', 'HRIS']
+  ].map(function (w, i) {
+    var day = fmt(addDays(today, w[2]));
+    return { id: String(500 + i), title: w[0], status: w[1], date: day + ' ' + w[3], link: SITE + '/?p=' + (500 + i), author: w[4], categories: w[5],
+      modified: fmt(addDays(today, Math.min(0, w[2]))) + ' 15:20', status_label: WP_LABEL[w[1]], edit_link: SITE + '/wp-admin/post.php?post=' + (500 + i) + '&action=edit' };
+  });
+  function wpListRes() { return { configured: true, posts: wpPosts, lastSync: stamp, canManage: true, now: nowStr() }; }
 
   // --- Brief generator (sama dengan backend) ---
   function tokens(t) { return String(t).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(function (w) { return w.length > 2 || /^\d+$/.test(w); }); }
@@ -222,7 +244,10 @@
           overdue: content.filter(function (c) { return c.status !== 'Terbit' && c.due_date && c.due_date < t; }),
           byStatus: statuses.map(function (s) { return { status: s, count: content.filter(function (c) { return c.status === s; }).length }; })
         },
-        sync: { gsc: stamp, ads: stamp, competitors: stamp }
+        wp: { configured: true, week: wpPosts.filter(function (p) { return p.status === 'future' && p.date >= nowStr() && p.date <= fmt(addDays(today, 7)) + ' 23:59'; }).length,
+          missed: wpPosts.filter(function (p) { return p.status === 'future' && p.date < nowStr(); }).length,
+          drafts: wpPosts.filter(function (p) { return p.status === 'draft' || p.status === 'pending'; }).length },
+        sync: { gsc: stamp, ads: stamp, competitors: stamp, wp: stamp }
       };
     },
     gsc: function () {
@@ -263,7 +288,20 @@
     },
     competitorDelete: function (r) { competitors = competitors.filter(function (c) { return c.id !== r.id; }); return {}; },
     keywordsSave: function (r) { keywords = r.keywords.map(function (k) { return { keyword: String(k).toLowerCase(), prioritas: 'Normal' }; }); return { count: keywords.length }; },
-    runJob: function (r) { return { message: 'Mode demo: job "' + r.job + '" disimulasikan' }; }
+    runJob: function (r) { return { message: 'Mode demo: job "' + r.job + '" disimulasikan' }; },
+    wpList: function () { return wpListRes(); },
+    wpSync: function () { return wpListRes(); },
+    wpReschedule: function (r) {
+      var p = wpPosts.filter(function (x) { return x.id === r.id; })[0];
+      if (!p || p.status !== 'future') throw new Error('Post ini tidak berstatus terjadwal');
+      if (r.date <= nowStr()) throw new Error('Jadwal baru harus di masa depan');
+      p.date = r.date; return { message: 'Jadwal dipindah ke ' + r.date };
+    },
+    wpUnschedule: function (r) {
+      var p = wpPosts.filter(function (x) { return x.id === r.id; })[0];
+      if (!p || p.status !== 'future') throw new Error('Post ini tidak berstatus terjadwal');
+      p.status = 'draft'; p.status_label = 'Draft'; return { message: 'Jadwal dibatalkan, post kembali menjadi draft' };
+    }
   };
 
   window.MockAPI = function (action, data) {

@@ -301,3 +301,29 @@ tbody tr:hover td { background: var(--surface-2); }
   .theme-mobile { position: absolute; top: 12px; right: 12px; width: 38px; height: 38px; border: 1px solid var(--border); background: var(--surface); }
   .theme-mobile svg { width: 18px; height: 18px; }
 }
+
+/* ---------- Kalender WordPress ---------- */
+.chip .tm { font-variant-numeric: tabular-nums; opacity: .7; margin-right: 4px; font-weight: 700; }
+.chip.wp-future { border-color: var(--logo); background: var(--info-bg); }
+.chip.wp-publish { border-color: var(--good); background: var(--good-bg); }
+.chip.wp-missed { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
+.chip.plan { background: transparent; border-top: 1px dashed var(--border); border-right: 1px dashed var(--border); border-bottom: 1px dashed var(--border); color: var(--ink-2); font-weight: 500; }
+.chip[draggable="true"] { cursor: grab; }
+.chip.dragging { opacity: .45; }
+.cal .day.drop-ok { background: var(--brand-50); box-shadow: inset 0 0 0 2px var(--brand); }
+.filter-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.fchip { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 4px 10px 4px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; background: var(--surface); }
+.fchip input { width: auto; margin: 0; accent-color: var(--brand); }
+.fchip.f-future { box-shadow: inset 3px 0 0 var(--logo); }
+.fchip.f-publish { box-shadow: inset 3px 0 0 var(--good); }
+.fchip.f-plan { box-shadow: inset 3px 0 0 var(--ink-3); }
+.alert-box.bad { background: var(--bad-bg); color: var(--bad); }
+.modal-sm { max-width: 520px; }
+.wp-title { margin: 0 0 8px; font-size: 17px; line-height: 1.35; }
+.kv { display: grid; grid-template-columns: 130px 1fr; gap: 8px 12px; margin: 0; font-size: 13.5px; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; font-weight: 500; }
+@media (max-width: 760px) {
+  .filter-chips { flex-basis: 100%; }
+  .chip .tm { display: none; }
+}

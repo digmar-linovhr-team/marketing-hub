@@ -271,6 +271,7 @@
           return '<li><div class="main-txt"><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.title || path(r.url)) + '</a><div class="muted small">' + esc(r.competitor) + ' · ' + dateID(r.first_seen) + '</div></div><span class="badge info">' + esc(r.matched_keyword) + '</span></li>';
         }).join('') + '</ul>' : '<div class="empty">Belum ada artikel relevan minggu ini</div>') + '</div>' +
         '<div class="card"><h3>Konten <a class="small" href="#konten">Buka kalender →</a></h3>' +
+        (d.wp && d.wp.configured ? '<div class="tags" style="margin-bottom:10px"><span class="badge info">WordPress · ' + d.wp.week + ' terjadwal 7 hari</span><span class="badge">' + d.wp.drafts + ' draft</span>' + (d.wp.missed ? '<span class="badge bad">' + d.wp.missed + ' gagal terbit</span>' : '') + '</div>' : '') +
         '<div class="tags" style="margin-bottom:10px">' + d.content.byStatus.map(function (s) { return '<span class="badge">' + s.status + ' · ' + s.count + '</span>'; }).join('') + '</div>' +
         (d.content.overdue.length + d.content.dueSoon.length ? '<ul class="list">' + d.content.overdue.concat(d.content.dueSoon).map(function (c) {
           var late = c.due_date < today_;
@@ -533,31 +534,148 @@
 
   // ==================== KONTEN ====================
   var calMonth = null;
+  var WP_FILTER_DEFAULT = { future: true, publish: true, plan: false };
+  function wpTime(p) { return String(p.date || '').slice(11, 16); }
+  function wpDay(p) { return String(p.date || '').slice(0, 10); }
+  function wpMissed(p, now) { return p.status === 'future' && p.date < now; }
+
   function viewContent(v) {
-    return api('contentList').then(function (d) {
+    return Promise.all([api('contentList'), api('wpList').catch(function () { return { configured: false, posts: [], canManage: false }; })]).then(function (res) {
+      var d = res[0], wp = res[1];
       state.cache.content = d.items;
       var mode = LS.get('mhub_content_mode') || 'calendar';
-      var act = setActions('<div class="seg" id="modeSeg"><button data-m="calendar">Kalender</button><button data-m="board">Board</button><button data-m="list">List</button></div><button class="btn btn-primary" id="addContent">+ Konten</button>');
+      var act = setActions('<div class="seg" id="modeSeg"><button data-m="calendar">Kalender</button><button data-m="board">Rencana</button><button data-m="list">List</button></div><button class="btn btn-primary" id="addContent">+ Rencana</button>');
       act.querySelector('#addContent').addEventListener('click', function () { openContentModal({ status: 'Ide', type: 'Artikel Baru', due_date: addDays(today(), 7) }); });
       var items = d.items;
       var t = today();
-      setSub(items.filter(function (c) { return c.status !== 'Terbit' && c.due_date && c.due_date < t; }).length + ' konten terlambat · ' + items.filter(function (c) { return c.status !== 'Terbit'; }).length + ' sedang berjalan');
+      var now = wp.now || (t + ' ' + new Date().toTimeString().slice(0, 5));
+      var posts = wp.posts || [];
+      var filt;
+      try { filt = Object.assign({}, WP_FILTER_DEFAULT, JSON.parse(LS.get('mhub_wp_filter') || '{}')); } catch (e) { filt = Object.assign({}, WP_FILTER_DEFAULT); }
+      if (!wp.configured) filt.plan = true;
+
+      function setCalSub() {
+        if (mode === 'calendar') {
+          var fut = posts.filter(function (p) { return p.status === 'future'; });
+          setSub(wp.configured ? fut.length + ' post terjadwal di WordPress · sinkron ' + (wp.lastSync || 'belum') : 'WordPress belum terhubung');
+        } else {
+          setSub(items.filter(function (c) { return c.status !== 'Terbit' && c.due_date && c.due_date < t; }).length + ' rencana terlambat · ' + items.filter(function (c) { return c.status !== 'Terbit'; }).length + ' sedang berjalan');
+        }
+      }
 
       function card(c) {
         var late = c.status !== 'Terbit' && c.due_date && c.due_date < t;
         return '<div class="kcard" data-id="' + esc(c.id) + '"><div class="t">' + esc(c.title) + '</div><div class="m">' +
-          (c.target_keyword ? '<span>🔑 ' + esc(c.target_keyword) + '</span>' : '') + '<span>' + esc(c.type) + '</span>' +
+          (c.target_keyword ? '<span>' + esc(c.target_keyword) + '</span>' : '') + '<span>' + esc(c.type) + '</span>' +
           '<span class="' + (late ? 'late' : '') + '">' + (c.status === 'Terbit' ? 'Terbit ' + dateID(c.publish_date) : 'Due ' + dateID(c.due_date)) + '</span>' +
           '<span>' + esc(userName(c.pic)) + '</span></div></div>';
       }
 
+      function bindPlanClicks() {
+        v.querySelectorAll('[data-id], [data-open]').forEach(function (n) {
+          n.addEventListener('click', function (e) {
+            e.preventDefault(); e.stopPropagation();
+            var id = n.getAttribute('data-id') || n.getAttribute('data-open');
+            var it = items.filter(function (c) { return c.id === id; })[0];
+            if (it) openContentModal(it);
+          });
+        });
+      }
+
+      function drawCalendar() {
+        var base = calMonth || t.slice(0, 7);
+        var y = Number(base.slice(0, 4)), mo = Number(base.slice(5, 7)) - 1;
+        var first = new Date(y, mo, 1), start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
+        var monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        var canDrag = wp.canManage;
+        var cells = '';
+        for (var i = 0; i < 42; i++) {
+          var dd = new Date(start); dd.setDate(start.getDate() + i);
+          var ds = dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0') + '-' + String(dd.getDate()).padStart(2, '0');
+          var dayPosts = posts.filter(function (p) { return wpDay(p) === ds && filt[p.status]; })
+            .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+          var dayPlans = filt.plan ? items.filter(function (c) { return (c.status === 'Terbit' ? (c.publish_date || c.due_date) : c.due_date) === ds; }) : [];
+          cells += '<div class="day' + (dd.getMonth() !== mo ? ' other' : '') + (ds === t ? ' today' : '') + '" data-date="' + ds + '"><div class="dnum">' + dd.getDate() + '</div>' +
+            dayPosts.map(function (p) {
+              var missed = wpMissed(p, now);
+              var cls = missed ? 'wp-missed' : 'wp-' + p.status;
+              var drag = canDrag && p.status === 'future' ? ' draggable="true"' : '';
+              return '<span class="chip ' + cls + '" data-wp="' + esc(p.id) + '"' + drag + ' title="' + esc(wpTime(p) + ' · ' + p.title + ' · ' + (missed ? 'Gagal terbit' : p.status_label)) + '"><span class="tm">' + esc(wpTime(p)) + '</span>' + esc(p.title) + '</span>';
+            }).join('') +
+            dayPlans.map(function (c) { return '<span class="chip plan st-' + esc(c.status) + '" data-id="' + esc(c.id) + '" title="' + esc('Rencana: ' + c.title + ' · ' + c.status) + '">' + esc(c.title) + '</span>'; }).join('') + '</div>';
+          if (i >= 34 && dd.getMonth() !== mo && dd.getDay() === 0) break;
+        }
+        var drafts = posts.filter(function (p) { return p.status === 'draft' || p.status === 'pending'; })
+          .sort(function (a, b) { return String(b.modified).localeCompare(String(a.modified)); });
+        var missedList = posts.filter(function (p) { return wpMissed(p, now); });
+
+        v.innerHTML =
+          (!wp.configured ? '<div class="alert-box" style="margin-bottom:16px">WordPress belum dihubungkan. ' + (state.user.role === 'admin' ? 'Di spreadsheet, jalankan menu <b>Marketing Hub → 3. Hubungkan WordPress</b>.' : 'Minta admin menghubungkannya.') + ' Sementara ini kalender menampilkan rencana internal.</div>' : '') +
+          (missedList.length ? '<div class="alert-box bad" style="margin-bottom:16px"><b>' + missedList.length + ' post gagal terbit</b> — jadwalnya sudah lewat tapi statusnya masih terjadwal di WordPress. Cek post tersebut di WordPress.</div>' : '') +
+          '<div class="card"><div class="cal-head"><button class="btn btn-sm" id="prevM" aria-label="Bulan sebelumnya">‹</button><h4>' + monthNames[mo] + ' ' + y + '</h4><button class="btn btn-sm" id="nextM" aria-label="Bulan berikutnya">›</button><button class="btn btn-sm" id="todayM">Hari ini</button>' +
+          '<div class="spacer"></div>' +
+          '<div class="filter-chips">' +
+          '<label class="fchip f-future"><input type="checkbox" data-f="future"' + (filt.future ? ' checked' : '') + '> Terjadwal</label>' +
+          '<label class="fchip f-publish"><input type="checkbox" data-f="publish"' + (filt.publish ? ' checked' : '') + '> Terbit</label>' +
+          '<label class="fchip f-plan"><input type="checkbox" data-f="plan"' + (filt.plan ? ' checked' : '') + '> Rencana internal</label></div>' +
+          (wp.configured ? '<button class="btn btn-sm" id="wpSync">' + ICON.refresh + ' Sinkron</button>' : '') + '</div>' +
+          '<div class="cal">' + ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map(function (x) { return '<div class="dow">' + x + '</div>'; }).join('') + cells + '</div>' +
+          '<div class="muted small" style="margin-top:10px">Data diambil dari WordPress (otomatis tiap jam). Klik post untuk detail' + (canDrag ? '; seret post terjadwal ke tanggal lain untuk menggeser jadwal' : '') + '. Jadwal baru dibuat di WordPress.</div></div>' +
+          (wp.configured ? '<div class="card section"><h3>Draft & menunggu review di WordPress <span class="muted">' + drafts.length + ' post</span></h3>' +
+            (drafts.length ? '<ul class="list">' + drafts.slice(0, 30).map(function (p) {
+              return '<li><div class="main-txt"><a href="' + esc(p.edit_link) + '" target="_blank" rel="noopener"><b>' + esc(p.title) + '</b></a><div class="muted small">' + esc(p.author || '-') + (p.categories ? ' · ' + esc(p.categories) : '') + ' · diubah ' + dateID(p.modified) + '</div></div>' +
+                '<span class="badge ' + (p.status === 'pending' ? 'warn' : '') + '">' + esc(p.status_label) + '</span></li>';
+            }).join('') + '</ul>' : '<div class="empty">Tidak ada draft</div>') + '</div>' : '');
+
+        document.getElementById('prevM').onclick = function () { var d2 = new Date(y, mo - 1, 1); calMonth = d2.getFullYear() + '-' + String(d2.getMonth() + 1).padStart(2, '0'); drawCalendar(); };
+        document.getElementById('nextM').onclick = function () { var d2 = new Date(y, mo + 1, 1); calMonth = d2.getFullYear() + '-' + String(d2.getMonth() + 1).padStart(2, '0'); drawCalendar(); };
+        document.getElementById('todayM').onclick = function () { calMonth = null; drawCalendar(); };
+        v.querySelectorAll('[data-f]').forEach(function (cb) {
+          cb.addEventListener('change', function () { filt[cb.getAttribute('data-f')] = cb.checked; LS.set('mhub_wp_filter', JSON.stringify(filt)); drawCalendar(); });
+        });
+        var syncBtn = document.getElementById('wpSync');
+        if (syncBtn) syncBtn.addEventListener('click', function () {
+          syncBtn.disabled = true; syncBtn.textContent = 'Menyinkronkan…';
+          api('wpSync').then(function (r) { wp = r; posts = r.posts || []; now = r.now || now; toast('Data WordPress diperbarui'); setCalSub(); drawCalendar(); })
+            .catch(function (e) { toast(e.message); syncBtn.disabled = false; syncBtn.innerHTML = ICON.refresh + ' Sinkron'; });
+        });
+        v.querySelectorAll('[data-wp]').forEach(function (n) {
+          n.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var p = posts.filter(function (x) { return x.id === n.getAttribute('data-wp'); })[0];
+            if (p) openWpModal(p, wp.canManage, now);
+          });
+          n.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/plain', n.getAttribute('data-wp')); e.dataTransfer.effectAllowed = 'move'; n.classList.add('dragging'); });
+          n.addEventListener('dragend', function () { n.classList.remove('dragging'); });
+        });
+        if (canDrag) v.querySelectorAll('.day').forEach(function (cell) {
+          cell.addEventListener('dragover', function (e) { e.preventDefault(); cell.classList.add('drop-ok'); });
+          cell.addEventListener('dragleave', function () { cell.classList.remove('drop-ok'); });
+          cell.addEventListener('drop', function (e) {
+            e.preventDefault(); cell.classList.remove('drop-ok');
+            var id = e.dataTransfer.getData('text/plain');
+            var p = posts.filter(function (x) { return x.id === id; })[0];
+            if (!p || p.status !== 'future') return;
+            var target = cell.getAttribute('data-date') + ' ' + wpTime(p);
+            if (cell.getAttribute('data-date') === wpDay(p)) return;
+            if (target <= now) { toast('Tanggal tujuan sudah lewat'); return; }
+            if (!confirm('Geser jadwal "' + p.title + '"\n' + dateID(wpDay(p)) + ' ' + wpTime(p) + '  →  ' + dateID(cell.getAttribute('data-date')) + ' ' + wpTime(p) + '?')) return;
+            api('wpReschedule', { id: id, date: target }).then(function (r) { toast(r.message); route(); }).catch(function (er) { toast(er.message); });
+          });
+        });
+        bindPlanClicks();
+      }
+
       function draw() {
         act.querySelectorAll('#modeSeg button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-m') === mode); });
+        act.querySelector('#addContent').classList.toggle('hidden', mode === 'calendar');
+        setCalSub();
         if (mode === 'board') {
           v.innerHTML = '<div class="board">' + CONTENT_STATUS.map(function (s) {
             var list = items.filter(function (c) { return c.status === s; }).sort(function (a, b) { return String(a.due_date).localeCompare(String(b.due_date)); });
             return '<div class="col"><h5><span>' + s + '</span><span>' + list.length + '</span></h5>' + list.map(card).join('') + '</div>';
           }).join('') + '</div>';
+          bindPlanClicks();
         } else if (mode === 'list') {
           v.innerHTML = '<div class="card"><div id="cList"></div></div>';
           sortableTable([
@@ -568,42 +686,63 @@
             { k: 'due_date', label: 'Deadline', render: function (c) { var late = c.status !== 'Terbit' && c.due_date && c.due_date < t; return '<span class="nowrap ' + (late ? 'delta down' : '') + '">' + dateID(c.due_date) + '</span>'; } },
             { k: 'publish_date', label: 'Terbit', render: function (c) { return c.url ? '<a href="' + esc(c.url) + '" target="_blank" rel="noopener">' + dateID(c.publish_date) + '</a>' : dateID(c.publish_date); } }
           ], items, { sortKey: 'due_date', sortDir: 1 }).mount(document.getElementById('cList'));
+          bindPlanClicks();
         } else {
-          var base = calMonth || t.slice(0, 7);
-          var y = Number(base.slice(0, 4)), mo = Number(base.slice(5, 7)) - 1;
-          var first = new Date(y, mo, 1), start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
-          var monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-          var cells = '';
-          for (var i = 0; i < 42; i++) {
-            var dd = new Date(start); dd.setDate(start.getDate() + i);
-            var ds = dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0') + '-' + String(dd.getDate()).padStart(2, '0');
-            var dayItems = items.filter(function (c) { return (c.status === 'Terbit' ? (c.publish_date || c.due_date) : c.due_date) === ds; });
-            cells += '<div class="day' + (dd.getMonth() !== mo ? ' other' : '') + (ds === t ? ' today' : '') + '" data-date="' + ds + '"><div class="dnum">' + dd.getDate() + '</div>' +
-              dayItems.map(function (c) { return '<span class="chip st-' + esc(c.status) + '" data-id="' + esc(c.id) + '" title="' + esc(c.title + ' · ' + c.status) + '">' + esc(c.title) + '</span>'; }).join('') + '</div>';
-            if (i >= 34 && dd.getMonth() !== mo && dd.getDay() === 0) break;
-          }
-          v.innerHTML = '<div class="card"><div class="cal-head"><button class="btn btn-sm" id="prevM">‹</button><h4>' + monthNames[mo] + ' ' + y + '</h4><button class="btn btn-sm" id="nextM">›</button><button class="btn btn-sm" id="todayM">Hari ini</button>' +
-            '<div class="spacer"></div><div class="tags">' + CONTENT_STATUS.map(function (s) { return '<span class="chip st-' + s + '" style="display:inline-block;cursor:default">' + s + '</span>'; }).join('') + '</div></div>' +
-            '<div class="cal">' + ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map(function (x) { return '<div class="dow">' + x + '</div>'; }).join('') + cells + '</div>' +
-            '<div class="muted small" style="margin-top:8px">Klik tanggal kosong untuk menambah konten. Konten ditampilkan di tanggal deadline (atau tanggal terbit).</div></div>';
-          document.getElementById('prevM').onclick = function () { var d2 = new Date(y, mo - 1, 1); calMonth = d2.getFullYear() + '-' + String(d2.getMonth() + 1).padStart(2, '0'); draw(); };
-          document.getElementById('nextM').onclick = function () { var d2 = new Date(y, mo + 1, 1); calMonth = d2.getFullYear() + '-' + String(d2.getMonth() + 1).padStart(2, '0'); draw(); };
-          document.getElementById('todayM').onclick = function () { calMonth = null; draw(); };
-          v.querySelectorAll('.day').forEach(function (cell) {
-            cell.addEventListener('click', function (e) { if (e.target.closest('.chip')) return; openContentModal({ status: 'Ide', type: 'Artikel Baru', due_date: cell.getAttribute('data-date') }); });
-          });
+          drawCalendar();
         }
-        v.querySelectorAll('[data-id], [data-open]').forEach(function (n) {
-          n.addEventListener('click', function (e) {
-            e.preventDefault(); e.stopPropagation();
-            var id = n.getAttribute('data-id') || n.getAttribute('data-open');
-            var it = items.filter(function (c) { return c.id === id; })[0];
-            if (it) openContentModal(it);
-          });
-        });
       }
       act.querySelectorAll('#modeSeg button').forEach(function (b) { b.addEventListener('click', function () { mode = b.getAttribute('data-m'); LS.set('mhub_content_mode', mode); draw(); }); });
       draw();
+    });
+  }
+
+  function openWpModal(p, canManage, now) {
+    var missed = wpMissed(p, now);
+    var isFuture = p.status === 'future';
+    var bg = document.createElement('div');
+    bg.className = 'modal-bg';
+    var statusBadge = missed ? '<span class="badge bad">Gagal terbit</span>' :
+      '<span class="badge ' + ({ future: 'info', publish: 'good', pending: 'warn' }[p.status] || '') + '">' + esc(p.status_label) + '</span>';
+    bg.innerHTML =
+      '<div class="modal modal-sm" role="dialog" aria-modal="true"><div class="modal-head"><h3>Post WordPress</h3><button class="icon-btn" data-close aria-label="Tutup">' + ICON.close + '</button></div>' +
+      '<div class="modal-body"><h4 class="wp-title">' + esc(p.title) + '</h4><div class="tags" style="margin-bottom:14px">' + statusBadge + '</div>' +
+      '<dl class="kv">' +
+      '<dt>' + (isFuture ? 'Jadwal terbit' : p.status === 'publish' ? 'Terbit' : 'Tanggal') + '</dt><dd>' + dateID(wpDay(p)) + ' · ' + esc(wpTime(p)) + '</dd>' +
+      '<dt>Penulis</dt><dd>' + esc(p.author || '-') + '</dd>' +
+      '<dt>Kategori</dt><dd>' + esc(p.categories || '-') + '</dd>' +
+      '<dt>Terakhir diubah</dt><dd>' + dateID(p.modified) + ' · ' + esc(String(p.modified || '').slice(11, 16)) + '</dd></dl>' +
+      '<div class="toolbar" style="margin:16px 0 0"><a class="btn" href="' + esc(p.edit_link) + '" target="_blank" rel="noopener">Edit di WordPress</a>' +
+      (p.link ? '<a class="btn" href="' + esc(p.link) + '" target="_blank" rel="noopener">' + (p.status === 'publish' ? 'Lihat artikel' : 'Pratinjau') + '</a>' : '') + '</div>' +
+      (isFuture && canManage ?
+        '<div class="brief-box"><h5 style="margin-top:0">Geser jadwal</h5><div class="form-grid" style="grid-template-columns:1fr 1fr auto;align-items:end">' +
+        '<div><label for="wpDate">Tanggal</label><input id="wpDate" type="date" value="' + esc(wpDay(p)) + '"></div>' +
+        '<div><label for="wpTime">Jam</label><input id="wpTime" type="time" value="' + esc(wpTime(p)) + '"></div>' +
+        '<div><button class="btn btn-primary" id="wpMove">Simpan</button></div></div>' +
+        '<div class="muted small" style="margin-top:6px">Jam mengikuti zona waktu situs WordPress.</div></div>' : '') +
+      (isFuture && !canManage ? '<div class="muted small" style="margin-top:14px">Hanya admin yang bisa menggeser atau membatalkan jadwal.</div>' : '') +
+      '</div>' +
+      '<div class="modal-foot">' + (isFuture && canManage ? '<button class="btn btn-danger" id="wpCancel" style="margin-right:auto">Batalkan jadwal</button>' : '') +
+      '<button class="btn" data-close>Tutup</button></div></div>';
+    document.body.appendChild(bg);
+    function close() { bg.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    bg.addEventListener('click', function (e) { if (e.target === bg || e.target.closest('[data-close]')) close(); });
+    var mv = bg.querySelector('#wpMove');
+    if (mv) mv.addEventListener('click', function () {
+      var dt = bg.querySelector('#wpDate').value + ' ' + bg.querySelector('#wpTime').value;
+      if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(dt)) { toast('Isi tanggal dan jam'); return; }
+      if (dt <= now) { toast('Jadwal baru harus di masa depan'); return; }
+      mv.disabled = true; mv.textContent = 'Menyimpan…';
+      api('wpReschedule', { id: p.id, date: dt }).then(function (r) { toast(r.message); close(); route(); })
+        .catch(function (e) { toast(e.message); mv.disabled = false; mv.textContent = 'Simpan'; });
+    });
+    var cn = bg.querySelector('#wpCancel');
+    if (cn) cn.addEventListener('click', function () {
+      if (!confirm('Batalkan jadwal "' + p.title + '"?\nPost akan kembali menjadi draft di WordPress dan tidak terbit otomatis.')) return;
+      cn.disabled = true; cn.textContent = 'Membatalkan…';
+      api('wpUnschedule', { id: p.id }).then(function (r) { toast(r.message); close(); route(); })
+        .catch(function (e) { toast(e.message); cn.disabled = false; cn.textContent = 'Batalkan jadwal'; });
     });
   }
 
