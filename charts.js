@@ -9,20 +9,21 @@
     return n;
   }
 
-  function niceMax(v) {
-    if (v <= 0) return 1;
-    var exp = Math.pow(10, Math.floor(Math.log10(v)));
-    var f = v / exp;
-    var nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
-    return nf * exp;
+  // Langkah sumbu yang "bulat": 1, 2, 5 × 10^n → label 0, 500, 1 rb, 1,5 rb, …
+  function niceStep(raw) {
+    if (raw <= 0) return 1;
+    var exp = Math.pow(10, Math.floor(Math.log10(raw)));
+    var f = raw / exp;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * exp;
   }
 
   function shortNum(n) {
     var a = Math.abs(n);
-    if (a >= 1e9) return (n / 1e9).toFixed(1).replace('.0', '') + ' M';
-    if (a >= 1e6) return (n / 1e6).toFixed(1).replace('.0', '') + ' jt';
-    if (a >= 1e3) return (n / 1e3).toFixed(1).replace('.0', '') + ' rb';
-    return String(Math.round(n * 10) / 10);
+    function f(x) { return x.toLocaleString('id-ID', { maximumFractionDigits: 1 }); }
+    if (a >= 1e9) return f(n / 1e9) + ' M';
+    if (a >= 1e6) return f(n / 1e6) + ' jt';
+    if (a >= 1e3) return f(n / 1e3) + ' rb';
+    return f(Math.round(n * 10) / 10);
   }
 
   function shortDate(s) {
@@ -41,15 +42,18 @@
 
     var W = Math.max(container.clientWidth || 600, 280);
     var H = opts.height || 220;
-    var m = { t: 10, r: 8, b: 26, l: 44 };
+    var m = { t: 12, r: 12, b: 28, l: 48 };
     var iw = W - m.l - m.r, ih = H - m.t - m.b;
-    var maxV = niceMax(Math.max.apply(null, data.map(function (d) { return d.y; })) * 1.05);
+    var rawMax = Math.max.apply(null, data.map(function (d) { return d.y; }));
+    var stepV = niceStep(rawMax / 4);
+    var nTicks = Math.max(1, Math.ceil(rawMax / stepV));
+    var maxV = stepV * nTicks;
     var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': opts.aria || label }, container);
     var g = el('g', { transform: 'translate(' + m.l + ',' + m.t + ')' }, svg);
 
     // grid + sumbu Y
-    for (var i = 0; i <= 4; i++) {
-      var yv = maxV / 4 * i, yy = ih - ih * i / 4;
+    for (var i = 0; i <= nTicks; i++) {
+      var yv = stepV * i, yy = ih - ih * i / nTicks;
       el('line', { x1: 0, x2: iw, y1: yy, y2: yy, class: 'gridline' }, g);
       var t = el('text', { x: -8, y: yy + 3, 'text-anchor': 'end', class: 'tick' }, g);
       t.textContent = shortNum(yv);

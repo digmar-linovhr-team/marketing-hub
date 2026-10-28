@@ -39,6 +39,13 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function num(n, d) { return Number(n || 0).toLocaleString('id-ID', { maximumFractionDigits: d == null ? 0 : d }); }
   function rp(n) { return 'Rp' + num(Math.round(n || 0)); }
+  function rpShort(n) {
+    n = Math.round(n || 0); var a = Math.abs(n);
+    if (a >= 1e9) return 'Rp' + (n / 1e9).toLocaleString('id-ID', { maximumFractionDigits: 2 }) + ' M';
+    if (a >= 1e6) return 'Rp' + (n / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' jt';
+    if (a >= 1e5) return 'Rp' + (n / 1e3).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' rb';
+    return 'Rp' + num(n);
+  }
   function pctTxt(n) { return (n * 100).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + '%'; }
   function today() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function addDays(s, n) { var d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -182,8 +189,14 @@
   function setActions(html) { var el = document.getElementById('pageActions'); if (el) el.innerHTML = html; return el; }
 
   // ==================== DASHBOARD ====================
-  function kpi(label, value, deltaHtml, note) {
-    return '<div class="card kpi"><div class="label">' + label + '</div><div class="value">' + value + '</div>' + (deltaHtml || '') + (note ? ' <span class="muted small">' + note + '</span>' : '') + '</div>';
+  // Kelompok angka utama: satu kartu, satu periode, beberapa metrik sejajar
+  function stat(label, value, deltaHtml) { return { label: label, value: value, delta: deltaHtml }; }
+  function statGroup(title, caption, stats, cls) {
+    return '<section class="card stat-group ' + (cls || '') + '"><header class="sg-head"><h3>' + title + '</h3>' + (caption ? '<span class="sg-cap">' + caption + '</span>' : '') + '</header>' +
+      '<div class="sg-row">' + stats.map(function (st) {
+        return '<div class="stat"><div class="stat-label">' + st.label + '</div><div class="stat-value" title="' + esc(String(st.value).replace(/<[^>]+>/g, '')) + '">' + st.value + '</div>' +
+          '<div class="stat-foot">' + (st.delta || '<span class="delta flat">–</span>') + '</div></div>';
+      }).join('') + '</div></section>';
   }
 
   function viewDashboard(v) {
@@ -193,13 +206,17 @@
       var cpa = a.conversions ? a.cost / a.conversions : 0, cpaP = ap.conversions ? ap.cost / ap.conversions : 0;
       var today_ = today();
       v.innerHTML =
-        '<div class="grid grid-kpi">' +
-        kpi('Klik organik · 28 hari', num(d.gsc.clicks), delta(d.gsc.clicks, d.gsc.prevClicks), 'vs 28 hari sebelumnya') +
-        kpi('Impresi organik', num(d.gsc.impressions), delta(d.gsc.impressions, d.gsc.prevImpressions)) +
-        kpi('Rata-rata posisi', num(d.gsc.position, 1), delta(d.gsc.position, d.gsc.prevPosition, true, 'abs')) +
-        kpi('Biaya Ads · 7 hari', rp(a.cost), delta(a.cost, ap.cost, true), 'vs 7 hari sebelumnya') +
-        kpi('Konversi Ads', num(a.conversions, 1), delta(a.conversions, ap.conversions)) +
-        kpi('CPA Ads', cpa ? rp(cpa) : '-', cpa && cpaP ? delta(cpa, cpaP, true) : '') +
+        '<div class="grid grid-2">' +
+        statGroup('Organik', '28 hari vs 28 hari sebelumnya', [
+          stat('Klik', num(d.gsc.clicks), delta(d.gsc.clicks, d.gsc.prevClicks)),
+          stat('Impresi', MChart.shortNum(d.gsc.impressions), delta(d.gsc.impressions, d.gsc.prevImpressions)),
+          stat('Posisi rata-rata', num(d.gsc.position, 1), delta(d.gsc.position, d.gsc.prevPosition, true, 'abs'))
+        ]) +
+        statGroup('Google Ads', '7 hari vs 7 hari sebelumnya', [
+          stat('Biaya', rpShort(a.cost), a.cost || ap.cost ? delta(a.cost, ap.cost, true) : ''),
+          stat('Konversi', num(a.conversions, 1), a.conversions || ap.conversions ? delta(a.conversions, ap.conversions) : ''),
+          stat('CPA', cpa ? rpShort(cpa) : '–', cpa && cpaP ? delta(cpa, cpaP, true) : '')
+        ]) +
         '</div>' +
         '<div class="card section"><h3>Klik organik harian <span class="muted">90 hari terakhir</span></h3><div id="chClicks"></div></div>' +
         '<div class="grid grid-2 section">' +
@@ -207,7 +224,7 @@
         (d.decay.length ? '<ul class="list">' + d.decay.map(function (p) {
           return '<li><div class="main-txt"><a href="' + esc(p.page) + '" target="_blank" rel="noopener">' + esc(path(p.page)) + '</a><div class="muted small">Klik ' + num(p.prev_clicks) + ' → ' + num(p.clicks) + ' · posisi ' + num(p.prev_position, 1) + ' → ' + num(p.position, 1) + '</div></div>' +
             '<span class="delta down nowrap">' + num(p.delta_clicks_pct, 1) + '%</span></li>';
-        }).join('') + '</ul>' : '<div class="empty">Tidak ada artikel yang turun signifikan 👍</div>') + '</div>' +
+        }).join('') + '</ul>' : '<div class="empty">Tidak ada artikel yang turun signifikan</div>') + '</div>' +
         '<div class="card"><h3>Keyword pantauan turun posisi</h3>' +
         (d.watchDrops.length ? '<ul class="list">' + d.watchDrops.map(function (w) {
           return '<li><div class="main-txt"><b>' + esc(w.keyword) + '</b><div class="muted small">Posisi ' + num(w.prev, 1) + ' → ' + num(w.position, 1) + '</div></div><span class="delta down nowrap">▼ ' + num(w.delta, 1) + '</span></li>';
@@ -393,14 +410,18 @@
           return { campaign: k, type: camps[k][0].campaign_type, impressions: x.impressions, clicks: x.clicks, ctr: x.ctr, cpc: x.cpc, cost: x.cost, conversions: x.conversions, cpa: x.cpa, prevCost: y.cost, prevConv: y.conversions, prevCpa: y.cpa };
         });
 
-        v.innerHTML = (rows.length ? '' : '<div class="card" style="margin-bottom:16px"><div class="alert-box">Belum ada data Ads. Pasang Google Ads Script (lihat README) agar data masuk ke sheet Ads_Daily.</div></div>') +
-          '<div class="grid grid-kpi">' +
-          kpi('Biaya', rp(a.cost), delta(a.cost, p.cost, true), 'vs ' + range + ' hari sebelumnya') +
-          kpi('Klik', num(a.clicks), delta(a.clicks, p.clicks)) +
-          kpi('CTR', pctTxt(a.ctr), delta(a.ctr, p.ctr)) +
-          kpi('CPC rata-rata', rp(a.cpc), delta(a.cpc, p.cpc, true)) +
-          kpi('Konversi', num(a.conversions, 1), delta(a.conversions, p.conversions)) +
-          kpi('CPA', a.cpa ? rp(a.cpa) : '-', a.cpa && p.cpa ? delta(a.cpa, p.cpa, true) : '') +
+        v.innerHTML = (rows.length ? '' : '<div class="alert-box" style="margin-bottom:16px">Belum ada data Ads. Pasang Google Ads Script (lihat README) agar data masuk ke sheet Ads_Daily.</div>') +
+          '<div class="grid grid-2">' +
+          statGroup('Jangkauan', range + ' hari vs ' + range + ' hari sebelumnya', [
+            stat('Biaya', rpShort(a.cost), delta(a.cost, p.cost, true)),
+            stat('Klik', num(a.clicks), delta(a.clicks, p.clicks)),
+            stat('CTR', pctTxt(a.ctr), delta(a.ctr, p.ctr))
+          ]) +
+          statGroup('Efisiensi', range + ' hari vs ' + range + ' hari sebelumnya', [
+            stat('CPC', rpShort(a.cpc), delta(a.cpc, p.cpc, true)),
+            stat('Konversi', num(a.conversions, 1), delta(a.conversions, p.conversions)),
+            stat('CPA', a.cpa ? rpShort(a.cpa) : '–', a.cpa && p.cpa ? delta(a.cpa, p.cpa, true) : '')
+          ]) +
           '</div>' +
           '<div class="grid grid-2 section"><div class="card"><h3>Biaya harian</h3><div id="chCost"></div></div>' +
           '<div class="card"><h3>Konversi harian</h3><div id="chConv"></div></div></div>' +
@@ -433,11 +454,11 @@
         return;
       }
       v.innerHTML =
-        '<div class="grid grid-kpi">' + d.competitors.map(function (c) {
+        statGroup('URL baru per kompetitor', 'sejak pemantauan dimulai', d.competitors.map(function (c) {
           var n = d.articles.filter(function (a) { return a.competitor_id === c.id; });
           var rel = n.filter(function (a) { return a.relevant === 'Y'; }).length;
-          return '<div class="card kpi"><div class="label">' + esc(c.name) + '</div><div class="value">' + n.length + '</div><span class="muted small">URL baru · ' + rel + ' relevan</span></div>';
-        }).join('') + '</div>' +
+          return stat(esc(c.name), num(n.length), '<span class="delta flat">' + rel + ' relevan</span>');
+        }), 'sg-wide') +
         '<div class="card section"><div class="toolbar"><select id="fComp"><option value="">Semua kompetitor</option>' +
         d.competitors.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('') + '</select>' +
         '<label style="display:flex;align-items:center;gap:6px;margin:0;font-weight:600"><input type="checkbox" id="fRel" style="width:auto" checked> Hanya yang relevan</label>' +
