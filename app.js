@@ -109,18 +109,54 @@
     { id: 'pengaturan', title: 'Pengaturan', short: 'Atur', icon: ICON.settings, view: viewSettings, admin: true }
   ];
 
+  // ==================== TEMA ====================
+  var SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  var MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+  function getTheme() { return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'; }
+  function setTheme(t) {
+    if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+    LS.set('mhub_theme', t);
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', t === 'dark' ? '#0e1319' : '#255473');
+    syncThemeUI();
+  }
+  function syncThemeUI() {
+    var t = getTheme();
+    document.querySelectorAll('[data-theme-set]').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-theme-set') === t); });
+    document.querySelectorAll('.theme-mobile').forEach(function (b) {
+      b.innerHTML = t === 'dark' ? SUN : MOON;
+      b.setAttribute('aria-label', t === 'dark' ? 'Ganti ke mode terang' : 'Ganti ke mode gelap');
+      b.title = b.getAttribute('aria-label');
+    });
+  }
+  function themeSwitch() {
+    return '<div class="theme-switch" role="group" aria-label="Tema tampilan">' +
+      '<button type="button" data-theme-set="light">' + SUN + 'Terang</button>' +
+      '<button type="button" data-theme-set="dark">' + MOON + 'Gelap</button></div>';
+  }
+  function bindTheme(scope) {
+    scope.querySelectorAll('[data-theme-set]').forEach(function (b) { b.addEventListener('click', function () { setTheme(b.getAttribute('data-theme-set')); }); });
+    scope.querySelectorAll('.theme-mobile').forEach(function (b) { b.addEventListener('click', function () { setTheme(getTheme() === 'dark' ? 'light' : 'dark'); }); });
+    syncThemeUI();
+  }
+  function brand(big) {
+    return '<div class="brand' + (big ? ' big' : '') + '"><img src="icons/icon-192.png" alt=""><div><b>' + esc(CFG.APP_NAME || 'Marketing Hub') + '</b><small>Linov<strong>HR</strong></small></div></div>';
+  }
+
   // ==================== AUTH ====================
   function renderLogin() {
     root.innerHTML =
-      '<div class="login-wrap"><form class="login-card" id="loginForm">' +
-      '<div class="logo"><div class="logo-mark">M<span>.</span></div>' + esc(CFG.COMPANY || '') + '</div>' +
-      '<h1>' + esc(CFG.APP_NAME || 'Marketing Hub') + '</h1>' +
+      '<div class="login-wrap"><div class="login-theme">' + themeSwitch() + '</div><form class="login-card" id="loginForm">' +
+      brand(true) +
+      '<h1>Masuk</h1>' +
       '<p>Masuk untuk memantau SEO, iklan, kompetitor, dan konten.</p>' +
       (DEMO ? '<div class="alert-box" style="margin-bottom:14px">Mode demo — isi email & PIN apa saja.</div>' : '') +
       '<div class="field"><label for="email">Email kantor</label><input id="email" type="email" autocomplete="username" required placeholder="nama@linovhr.com"></div>' +
       '<div class="field"><label for="pin">PIN</label><input id="pin" type="password" autocomplete="current-password" required minlength="' + (DEMO ? 1 : 6) + '"></div>' +
       '<button class="btn btn-primary btn-block" type="submit" id="loginBtn">Masuk</button>' +
       '<div class="error-text" id="loginErr"></div></form></div>';
+    bindTheme(root);
     document.getElementById('loginForm').addEventListener('submit', function (e) {
       e.preventDefault();
       var btn = document.getElementById('loginBtn'), err = document.getElementById('loginErr');
@@ -157,17 +193,18 @@
     var bnav = routes.map(function (r) { return '<a href="#' + r.id + '" data-r="' + r.id + '">' + r.icon + '<span>' + r.short + '</span></a>'; }).join('');
     root.innerHTML =
       '<div class="app">' +
-      '<aside class="sidebar"><div class="logo"><div class="logo-mark">M<span>.</span></div>' + esc(CFG.APP_NAME || 'Marketing Hub') + '</div>' +
+      '<aside class="sidebar">' + brand(false) +
       '<nav class="nav">' + nav + '</nav>' +
-      '<div class="sidebar-foot"><div class="user-chip"><div class="avatar">' + esc(initials(state.user.name)) + '</div>' +
+      '<div class="sidebar-foot"><div style="margin-bottom:12px">' + themeSwitch() + '</div><div class="user-chip"><div class="avatar">' + esc(initials(state.user.name)) + '</div>' +
       '<div style="min-width:0;flex:1"><div style="font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(state.user.name) + '</div>' +
       '<div class="muted small">' + esc(state.user.jabatan || state.user.role) + '</div></div>' +
       '<button class="icon-btn" id="logoutBtn" title="Keluar" aria-label="Keluar">' + ICON.logout + '</button></div></div></aside>' +
       '<main class="main">' + (DEMO ? '<div class="demo-banner">Mode demo: data contoh. Isi API_URL di config.js untuk memakai data asli.</div>' : '') +
-      '<div class="topbar"><div><h2 id="pageTitle"></h2><div class="sub" id="pageSub"></div></div><div id="pageActions" class="toolbar" style="margin:0"></div></div>' +
+      '<div class="topbar"><div><h2 id="pageTitle"></h2><div class="sub" id="pageSub"></div></div><div class="topbar-right"><div id="pageActions" class="toolbar" style="margin:0"></div><button type="button" class="icon-btn theme-mobile"></button></div></div>' +
       '<div class="content" id="view"></div></main>' +
       '<nav class="bottom-nav">' + bnav + '</nav></div>';
     document.getElementById('logoutBtn').addEventListener('click', function () { if (confirm('Keluar dari Marketing Hub?')) logout(); });
+    bindTheme(root);
   }
 
   function route() {
