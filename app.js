@@ -447,7 +447,7 @@
           return { campaign: k, type: camps[k][0].campaign_type, impressions: x.impressions, clicks: x.clicks, ctr: x.ctr, cpc: x.cpc, cost: x.cost, conversions: x.conversions, cpa: x.cpa, prevCost: y.cost, prevConv: y.conversions, prevCpa: y.cpa };
         });
 
-        v.innerHTML = (rows.length ? '' : '<div class="alert-box" style="margin-bottom:16px">Belum ada data Ads. Pasang Google Ads Script (lihat README) agar data masuk ke sheet Ads_Daily.</div>') +
+        v.innerHTML = (rows.length ? '' : '<div class="alert-box" style="margin-bottom:16px">Belum ada data Ads. Data akan masuk otomatis setelah laporan terjadwal Google Ads "Marketing Hub Ads" terkirim ke email dan diimpor (setiap 4 jam).</div>') +
           '<div class="grid grid-2">' +
           statGroup('Jangkauan', range + ' hari vs ' + range + ' hari sebelumnya', [
             stat('Biaya', rpShort(a.cost), delta(a.cost, p.cost, true)),
