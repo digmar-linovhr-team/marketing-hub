@@ -714,7 +714,7 @@
       '<dt>Penulis</dt><dd>' + esc(p.author || '-') + '</dd>' +
       '<dt>Kategori</dt><dd>' + esc(p.categories || '-') + '</dd>' +
       '<dt>Terakhir diubah</dt><dd>' + dateID(p.modified) + ' · ' + esc(String(p.modified || '').slice(11, 16)) + '</dd>' +
-      (p.status === 'publish' ? '<dt>Di website</dt><dd>' + (p.live === 'live' ? '<span class="badge good">Tayang</span>' : p.live ? '<span class="badge warn">Belum tayang · ' + esc(p.live) + '</span>' : '<span class="muted">Belum dicek</span>') + '</dd>' : '') +
+      (p.status === 'publish' && p.live ? '<dt>Di website</dt><dd>' + (p.live === 'live' ? '<span class="badge good">Tayang</span>' : '<span class="badge warn">Belum tayang · ' + esc(p.live) + '</span>') + '</dd>' : '') +
       '</dl>' +
       '<div class="toolbar" style="margin:16px 0 0"><a class="btn" href="' + esc(p.edit_link) + '" target="_blank" rel="noopener">Edit di WordPress</a>' +
       (p.status === 'publish' && p.public_url ? '<a class="btn" href="' + esc(p.public_url) + '" target="_blank" rel="noopener">Lihat di website</a>' : '') + '</div>' +
