@@ -345,7 +345,7 @@ select:hover { border-color: var(--ink-3); }
 .select-wrap select { border: none; height: 34px; background-color: transparent; padding-left: 8px; }
 .select-wrap select:focus { outline: none; }
 .filter-bar { gap: 10px; }
-.pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
 .pill { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); font-size: 13px; font-weight: 600; white-space: nowrap; transition: background .12s, border-color .12s, color .12s; }
 .pill:hover { border-color: var(--ink-3); color: var(--ink); }
 .pill .n { font-size: 11.5px; font-weight: 700; color: var(--ink-3); font-variant-numeric: tabular-nums; }

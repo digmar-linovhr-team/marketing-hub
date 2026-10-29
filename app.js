@@ -550,10 +550,9 @@
         return;
       }
       if (compFilter.comp && !d.competitors.some(function (c) { return c.id === compFilter.comp; })) compFilter.comp = '';
-      var usePills = d.competitors.length <= 6;
       v.innerHTML =
-        '<div class="card"><div class="toolbar filter-bar"><div id="compFilter" class="pills" role="tablist" aria-label="Filter kompetitor"></div>' +
-        '<span class="vsep" aria-hidden="true"></span>' +
+        '<div class="card"><div id="compFilter" class="pills" role="tablist" aria-label="Filter kompetitor"></div>' +
+        '<div class="toolbar filter-bar">' +
         '<label class="switch"><input type="checkbox" id="fRel"' + (compFilter.rel ? ' checked' : '') + '><span class="track" aria-hidden="true"></span>Hanya relevan</label>' +
         '<div class="spacer"></div><input type="search" id="fQ" placeholder="Cari judul atau URL" value="' + esc(compFilter.q) + '"></div><div id="artTbl"></div></div>';
 
@@ -562,21 +561,13 @@
         var list = base();
         var count = function (id) { return list.filter(function (a) { return !id || a.competitor_id === id; }).length; };
         var box = document.getElementById('compFilter');
-        if (usePills) {
-          box.innerHTML = [{ id: '', name: 'Semua' }].concat(d.competitors).map(function (c) {
-            var on = compFilter.comp === c.id;
-            return '<button type="button" role="tab" aria-selected="' + on + '" class="pill' + (on ? ' on' : '') + '" data-comp="' + esc(c.id) + '">' + esc(c.name) + '<span class="n">' + num(count(c.id)) + '</span></button>';
-          }).join('');
-          box.querySelectorAll('[data-comp]').forEach(function (b) {
-            b.addEventListener('click', function () { compFilter.comp = b.getAttribute('data-comp'); drawFilter(); drawTable(); });
-          });
-        } else {
-          box.innerHTML = '<div class="select-wrap"><span class="select-label">Kompetitor</span><select id="fComp" aria-label="Kompetitor">' +
-            [{ id: '', name: 'Semua' }].concat(d.competitors).map(function (c) {
-              return '<option value="' + esc(c.id) + '"' + (compFilter.comp === c.id ? ' selected' : '') + '>' + esc(c.name) + ' (' + num(count(c.id)) + ')</option>';
-            }).join('') + '</select></div>';
-          document.getElementById('fComp').addEventListener('change', function (e) { compFilter.comp = e.target.value; drawTable(); });
-        }
+        box.innerHTML = [{ id: '', name: 'Semua' }].concat(d.competitors).map(function (c) {
+          var on = compFilter.comp === c.id;
+          return '<button type="button" role="tab" aria-selected="' + on + '" class="pill' + (on ? ' on' : '') + '" data-comp="' + esc(c.id) + '">' + esc(c.name) + '<span class="n">' + num(count(c.id)) + '</span></button>';
+        }).join('');
+        box.querySelectorAll('[data-comp]').forEach(function (b) {
+          b.addEventListener('click', function () { compFilter.comp = b.getAttribute('data-comp'); drawFilter(); drawTable(); });
+        });
       }
       function drawTable() {
         var q = compFilter.q.trim().toLowerCase();
