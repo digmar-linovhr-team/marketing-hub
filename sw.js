@@ -1,6 +1,6 @@
 // Service worker: cache tampilan aplikasi agar cepat dibuka & bisa di-install.
 // Data dari API selalu diambil langsung (tidak di-cache).
-var CACHE = 'mhub-v4';
+var CACHE = 'mhub-v5';
 var ASSETS = ['./', './index.html', './styles.css', './app.js', './charts.js', './mock.js', './config.js', './manifest.json', './icons/icon-192.png'];
 
 self.addEventListener('install', function (e) {

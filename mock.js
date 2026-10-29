@@ -160,8 +160,10 @@
     ['Employee Self Service: Manfaat bagi HR', 'draft', -5, '00:00', 'Rina', 'HRIS']
   ].map(function (w, i) {
     var day = fmt(addDays(today, w[2]));
-    return { id: String(500 + i), title: w[0], status: w[1], date: day + ' ' + w[3], link: SITE + '/?p=' + (500 + i), author: w[4], categories: w[5],
-      modified: fmt(addDays(today, Math.min(0, w[2]))) + ' 15:20', status_label: WP_LABEL[w[1]], edit_link: SITE + '/wp-admin/post.php?post=' + (500 + i) + '&action=edit' };
+    var slug = w[0].toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return { id: String(500 + i), title: w[0], status: w[1], date: day + ' ' + w[3], link: 'https://wp.linovhr.com/' + slug + '/', author: w[4], categories: w[5],
+      slug: slug, public_url: SITE + '/blog/' + slug + '/', live: w[1] === 'publish' ? (i === 6 ? 'HTTP 404' : 'live') : '',
+      modified: fmt(addDays(today, Math.min(0, w[2]))) + ' 15:20', status_label: WP_LABEL[w[1]], edit_link: 'https://wp.linovhr.com/wp-admin/post.php?post=' + (500 + i) + '&action=edit' };
   });
   function wpListRes() { return { configured: true, posts: wpPosts, lastSync: stamp, canManage: true, now: nowStr() }; }
 
@@ -246,7 +248,8 @@
         },
         wp: { configured: true, week: wpPosts.filter(function (p) { return p.status === 'future' && p.date >= nowStr() && p.date <= fmt(addDays(today, 7)) + ' 23:59'; }).length,
           missed: wpPosts.filter(function (p) { return p.status === 'future' && p.date < nowStr(); }).length,
-          drafts: wpPosts.filter(function (p) { return p.status === 'draft' || p.status === 'pending'; }).length },
+          drafts: wpPosts.filter(function (p) { return p.status === 'draft' || p.status === 'pending'; }).length,
+          notLive: wpPosts.filter(function (p) { return p.status === 'publish' && p.live && p.live !== 'live'; }).length },
         sync: { gsc: stamp, ads: stamp, competitors: stamp, wp: stamp }
       };
     },

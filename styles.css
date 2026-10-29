@@ -306,6 +306,7 @@ tbody tr:hover td { background: var(--surface-2); }
 .chip .tm { font-variant-numeric: tabular-nums; opacity: .7; margin-right: 4px; font-weight: 700; }
 .chip.wp-future { border-color: var(--logo); background: var(--info-bg); }
 .chip.wp-publish { border-color: var(--good); background: var(--good-bg); }
+.chip.wp-notlive { border-color: var(--warn); background: var(--warn-bg); }
 .chip.wp-missed { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
 .chip.plan { background: transparent; border-top: 1px dashed var(--border); border-right: 1px dashed var(--border); border-bottom: 1px dashed var(--border); color: var(--ink-2); font-weight: 500; }
 .chip[draggable="true"] { cursor: grab; }
