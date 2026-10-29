@@ -31,7 +31,62 @@
         if (res.error === 'SESSION_EXPIRED') { logout(true); throw new Error('Sesi berakhir, silakan login lagi'); }
         throw new Error(res.error || 'Terjadi kesalahan');
       }
+      if (MUTATIONS[action]) cacheClear();
       return res;
+    });
+  }
+
+  // ---- Cache data di perangkat: halaman tampil seketika dari data terakhir, lalu diperbarui di latar ----
+  var READS = ['dashboard', 'gsc', 'ads', 'competitors', 'contentList', 'wpList', 'users'];
+  var MUTATIONS = { contentSave: 1, contentDelete: 1, briefSave: 1, settingsSave: 1, competitorSave: 1, competitorDelete: 1, keywordsSave: 1, runJob: 1, wpReschedule: 1, wpUnschedule: 1 };
+  var FRESH_MS = 60 * 1000;
+  var memCache = {};
+  var routeGen = 0;
+  function ckey(a) { return 'mhub_c_' + (state.user ? state.user.email : '') + '_' + a; }
+  function cacheGet(a) {
+    if (memCache[a]) return memCache[a];
+    try { var raw = localStorage.getItem(ckey(a)); if (raw) { memCache[a] = JSON.parse(raw); return memCache[a]; } } catch (e) { /* abaikan */ }
+    return null;
+  }
+  function cacheSet(a, data) {
+    var entry = { t: Date.now(), d: data };
+    memCache[a] = entry;
+    try { localStorage.setItem(ckey(a), JSON.stringify(entry)); } catch (e) { /* penyimpanan penuh → cukup di memori */ }
+  }
+  function cacheClear(list) {
+    (list || READS).forEach(function (a) { delete memCache[a]; try { localStorage.removeItem(ckey(a)); } catch (e) { /* abaikan */ } });
+  }
+  function sameData(a, b) {
+    function strip(k, v) { return k === 'now' || k === 'ok' ? undefined : v; }
+    return JSON.stringify(a, strip) === JSON.stringify(b, strip);
+  }
+  // Baca data: pakai cache bila ada (langsung tampil), lalu segarkan di latar bila sudah > 1 menit
+  function read(action) {
+    var c = cacheGet(action);
+    function fetchFresh() {
+      return api(action).then(function (res) {
+        var changed = !c || !sameData(c.d, res);
+        cacheSet(action, res);
+        return { res: res, changed: changed };
+      });
+    }
+    if (c) {
+      if (Date.now() - c.t > FRESH_MS) {
+        var gen = routeGen;
+        fetchFresh().then(function (o) {
+          if (o.changed && gen === routeGen && !document.querySelector('.modal-bg')) route(true);
+        }).catch(function () {});
+      }
+      return Promise.resolve(c.d);
+    }
+    return fetchFresh().then(function (o) { return o.res; });
+  }
+  // Setelah login, muat data semua halaman di latar supaya perpindahan menu instan
+  function prefetch() {
+    READS.forEach(function (a) {
+      if (a === 'users') return;
+      var c = cacheGet(a);
+      if (!c || Date.now() - c.t > FRESH_MS) api(a).then(function (res) { cacheSet(a, res); }).catch(function () {});
     });
   }
 
@@ -174,6 +229,7 @@
 
   function logout(silent) {
     if (!silent && state.token) api('logout').catch(function () {});
+    cacheClear(); memCache = {};
     state.token = null; state.user = null; state.cache = {};
     LS.del('mhub_token'); LS.del('mhub_user');
     renderLogin();
@@ -207,9 +263,10 @@
     bindTheme(root);
   }
 
-  function route() {
+  function route(quiet) {
     if (!state.token) return renderLogin();
     if (!document.getElementById('view')) renderShell();
+    if (quiet !== true) routeGen++;
     var r = currentRoute();
     document.querySelectorAll('[data-r]').forEach(function (a) { a.classList.toggle('active', a.getAttribute('data-r') === r.id); });
     document.getElementById('pageTitle').textContent = r.title;
@@ -217,9 +274,9 @@
     document.getElementById('pageActions').innerHTML = '';
     document.title = r.title + ' · ' + (CFG.APP_NAME || 'Marketing Hub');
     var v = document.getElementById('view');
-    loading(v);
-    window.scrollTo(0, 0);
-    r.view(v).catch(function (e) { errorBox(v, e); });
+    if (quiet !== true) { loading(v); window.scrollTo(0, 0); }
+    var y = window.scrollY;
+    r.view(v).then(function () { if (quiet === true) window.scrollTo(0, y); }).catch(function (e) { errorBox(v, e); });
   }
 
   function setSub(txt) { var el = document.getElementById('pageSub'); if (el) el.textContent = txt; }
@@ -237,7 +294,7 @@
   }
 
   function viewDashboard(v) {
-    return api('dashboard').then(function (d) {
+    return read('dashboard').then(function (d) {
       setSub('Sinkron terakhir — GSC: ' + (d.sync.gsc || 'belum') + ' · Ads: ' + (d.sync.ads || 'belum') + ' · Kompetitor: ' + (d.sync.competitors || 'belum'));
       var a = d.ads.cur, ap = d.ads.prev;
       var cpa = a.conversions ? a.cost / a.conversions : 0, cpaP = ap.conversions ? ap.cost / ap.conversions : 0;
@@ -330,7 +387,7 @@
   }
 
   function viewGSC(v) {
-    return api('gsc').then(function (d) {
+    return read('gsc').then(function (d) {
       var r = d.ranges || {};
       setSub('Periode ' + dateID(r.curStart) + ' – ' + dateID(r.curEnd) + ' dibanding ' + dateID(r.prevStart) + ' – ' + dateID(r.prevEnd) + ' · sinkron ' + (d.lastPull || 'belum'));
       var params = hashParams();
@@ -346,7 +403,7 @@
         '<div class="card"><h3>Impresi harian</h3><div id="chI"></div></div></div>' +
         '<div class="card section"><div class="toolbar"><div class="seg" id="tabs">' +
         '<button data-t="pages">Halaman</button><button data-t="queries">Query</button><button data-t="watch">Keyword pantauan</button></div>' +
-        '<div class="spacer"></div><select id="fStatus"><option>Semua</option><option>Decay</option><option>Naik</option><option>Baru</option><option>Stabil</option></select>' +
+        '<div class="spacer"></div><div class="select-wrap" id="fStatusWrap"><span class="select-label">Status</span><select id="fStatus" aria-label="Status halaman"><option>Semua</option><option>Decay</option><option>Naik</option><option>Baru</option><option>Stabil</option></select></div>' +
         '<input type="search" id="fSearch" placeholder="Cari…"></div><div id="tbl"></div></div>';
 
       MChart.line(document.getElementById('chC'), d.daily.map(function (x) { return { x: x.date, y: Number(x.clicks) }; }), { label: 'Klik' });
@@ -357,7 +414,7 @@
 
       function draw() {
         document.querySelectorAll('#tabs button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-t') === tab); });
-        fStatus.classList.toggle('hidden', tab !== 'pages');
+        document.getElementById('fStatusWrap').classList.toggle('hidden', tab !== 'pages');
         var s = fSearch.value.trim().toLowerCase();
         var tbl = document.getElementById('tbl');
         if (tab === 'pages') {
@@ -417,7 +474,7 @@
 
   // ==================== GOOGLE ADS ====================
   function viewAds(v) {
-    return api('ads').then(function (d) {
+    return read('ads').then(function (d) {
       setSub('Sinkron terakhir: ' + (d.lastSync || 'belum') + ' · data sampai kemarin');
       var rows = d.rows.map(function (r) { ['impressions', 'clicks', 'cost', 'conversions'].forEach(function (k) { r[k] = Number(r[k] || 0); }); return r; });
       var range = Number(LS.get('mhub_ads_range') || 30);
@@ -484,27 +541,47 @@
   }
 
   // ==================== KOMPETITOR ====================
+  var compFilter = { comp: '', rel: true, q: '' };
   function viewCompetitors(v) {
-    return api('competitors').then(function (d) {
+    return read('competitors').then(function (d) {
       setSub('Cek sitemap harian · terakhir ' + (d.lastCheck || 'belum'));
       if (!d.competitors.length) {
         v.innerHTML = '<div class="card"><div class="empty">Belum ada kompetitor. ' + (state.user.role === 'admin' ? '<a href="#pengaturan">Tambahkan di Pengaturan →</a>' : 'Minta admin menambahkannya.') + '</div></div>';
         return;
       }
+      if (compFilter.comp && !d.competitors.some(function (c) { return c.id === compFilter.comp; })) compFilter.comp = '';
+      var usePills = d.competitors.length <= 6;
       v.innerHTML =
-        statGroup('URL baru per kompetitor', 'sejak pemantauan dimulai', d.competitors.map(function (c) {
-          var n = d.articles.filter(function (a) { return a.competitor_id === c.id; });
-          var rel = n.filter(function (a) { return a.relevant === 'Y'; }).length;
-          return stat(esc(c.name), num(n.length), '<span class="delta flat">' + rel + ' relevan</span>');
-        }), 'sg-wide') +
-        '<div class="card section"><div class="toolbar"><select id="fComp"><option value="">Semua kompetitor</option>' +
-        d.competitors.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>'; }).join('') + '</select>' +
-        '<label style="display:flex;align-items:center;gap:6px;margin:0;font-weight:600"><input type="checkbox" id="fRel" style="width:auto" checked> Hanya yang relevan</label>' +
-        '<div class="spacer"></div><input type="search" id="fQ" placeholder="Cari judul / URL…"></div><div id="artTbl"></div></div>';
-      function draw() {
-        var c = document.getElementById('fComp').value, rel = document.getElementById('fRel').checked, q = document.getElementById('fQ').value.trim().toLowerCase();
-        var rows = d.articles.filter(function (a) {
-          return (!c || a.competitor_id === c) && (!rel || a.relevant === 'Y') && (!q || (a.title + ' ' + a.url).toLowerCase().indexOf(q) > -1);
+        '<div class="card"><div class="toolbar filter-bar"><div id="compFilter" class="pills" role="tablist" aria-label="Filter kompetitor"></div>' +
+        '<span class="vsep" aria-hidden="true"></span>' +
+        '<label class="switch"><input type="checkbox" id="fRel"' + (compFilter.rel ? ' checked' : '') + '><span class="track" aria-hidden="true"></span>Hanya relevan</label>' +
+        '<div class="spacer"></div><input type="search" id="fQ" placeholder="Cari judul atau URL" value="' + esc(compFilter.q) + '"></div><div id="artTbl"></div></div>';
+
+      function base() { return d.articles.filter(function (a) { return !compFilter.rel || a.relevant === 'Y'; }); }
+      function drawFilter() {
+        var list = base();
+        var count = function (id) { return list.filter(function (a) { return !id || a.competitor_id === id; }).length; };
+        var box = document.getElementById('compFilter');
+        if (usePills) {
+          box.innerHTML = [{ id: '', name: 'Semua' }].concat(d.competitors).map(function (c) {
+            var on = compFilter.comp === c.id;
+            return '<button type="button" role="tab" aria-selected="' + on + '" class="pill' + (on ? ' on' : '') + '" data-comp="' + esc(c.id) + '">' + esc(c.name) + '<span class="n">' + num(count(c.id)) + '</span></button>';
+          }).join('');
+          box.querySelectorAll('[data-comp]').forEach(function (b) {
+            b.addEventListener('click', function () { compFilter.comp = b.getAttribute('data-comp'); drawFilter(); drawTable(); });
+          });
+        } else {
+          box.innerHTML = '<div class="select-wrap"><span class="select-label">Kompetitor</span><select id="fComp" aria-label="Kompetitor">' +
+            [{ id: '', name: 'Semua' }].concat(d.competitors).map(function (c) {
+              return '<option value="' + esc(c.id) + '"' + (compFilter.comp === c.id ? ' selected' : '') + '>' + esc(c.name) + ' (' + num(count(c.id)) + ')</option>';
+            }).join('') + '</select></div>';
+          document.getElementById('fComp').addEventListener('change', function (e) { compFilter.comp = e.target.value; drawTable(); });
+        }
+      }
+      function drawTable() {
+        var q = compFilter.q.trim().toLowerCase();
+        var rows = base().filter(function (a) {
+          return (!compFilter.comp || a.competitor_id === compFilter.comp) && (!q || (a.title + ' ' + a.url).toLowerCase().indexOf(q) > -1);
         });
         sortableTable([
           { k: 'first_seen', label: 'Terdeteksi', render: function (a) { return '<span class="nowrap">' + dateID(a.first_seen) + '</span>'; } },
@@ -515,20 +592,21 @@
           sortKey: 'first_seen',
           action: function (a, i) { return '<button class="btn btn-sm" data-counter="' + i + '">+ Konten tandingan</button>'; },
           onMount: function (cont) {
-            var sorted = rows.slice().sort(function (x, y) { return x.first_seen < y.first_seen ? 1 : -1; });
             cont.querySelectorAll('[data-counter]').forEach(function (b) {
               b.addEventListener('click', function () {
-                var tr = b.closest('tr'); var link = tr.querySelector('a').getAttribute('href');
-                var a = sorted.filter(function (x) { return x.url === link; })[0] || {};
+                var link = b.closest('tr').querySelector('a').getAttribute('href');
+                var a = rows.filter(function (x) { return x.url === link; })[0] || {};
                 openContentModal({ title: a.title || '', target_keyword: a.matched_keyword || '', type: 'Artikel Baru', status: 'Ide', due_date: addDays(today(), 14), notes: 'Referensi kompetitor: ' + a.url });
               });
             });
           }
         }).mount(document.getElementById('artTbl'));
+        if (!rows.length) document.getElementById('artTbl').innerHTML = '<div class="empty">' + (compFilter.rel ? 'Belum ada artikel baru yang relevan. Matikan "Hanya relevan" untuk melihat semua URL baru.' : 'Belum ada URL baru.') + '</div>';
       }
-      ['fComp', 'fRel'].forEach(function (id) { document.getElementById(id).addEventListener('change', draw); });
-      document.getElementById('fQ').addEventListener('input', draw);
-      draw();
+      document.getElementById('fRel').addEventListener('change', function (e) { compFilter.rel = e.target.checked; drawFilter(); drawTable(); });
+      document.getElementById('fQ').addEventListener('input', function (e) { compFilter.q = e.target.value; drawTable(); });
+      drawFilter();
+      drawTable();
     });
   }
 
@@ -541,7 +619,7 @@
   function wpNotLive(p) { return p.status === 'publish' && p.live && p.live !== 'live'; }
 
   function viewContent(v) {
-    return Promise.all([api('contentList'), api('wpList').catch(function () { return { configured: false, posts: [], canManage: false }; })]).then(function (res) {
+    return Promise.all([read('contentList'), read('wpList').catch(function () { return { configured: false, posts: [], canManage: false }; })]).then(function (res) {
       var d = res[0], wp = res[1];
       state.cache.content = d.items;
       var mode = LS.get('mhub_content_mode') || 'calendar';
@@ -549,7 +627,7 @@
       act.querySelector('#addContent').addEventListener('click', function () { openContentModal({ status: 'Ide', type: 'Artikel Baru', due_date: addDays(today(), 7) }); });
       var items = d.items;
       var t = today();
-      var now = wp.now || (t + ' ' + new Date().toTimeString().slice(0, 5));
+      var now = t + ' ' + new Date().toTimeString().slice(0, 5);
       var posts = wp.posts || [];
       var filt;
       try { filt = Object.assign({}, WP_FILTER_DEFAULT, JSON.parse(LS.get('mhub_wp_filter') || '{}')); } catch (e) { filt = Object.assign({}, WP_FILTER_DEFAULT); }
@@ -639,7 +717,7 @@
         var syncBtn = document.getElementById('wpSync');
         if (syncBtn) syncBtn.addEventListener('click', function () {
           syncBtn.disabled = true; syncBtn.textContent = 'Menyinkronkan…';
-          api('wpSync').then(function (r) { wp = r; posts = r.posts || []; now = r.now || now; toast('Data WordPress diperbarui'); setCalSub(); drawCalendar(); })
+          api('wpSync').then(function (r) { cacheSet('wpList', r); wp = r; posts = r.posts || []; toast('Data WordPress diperbarui'); setCalSub(); drawCalendar(); })
             .catch(function (e) { toast(e.message); syncBtn.disabled = false; syncBtn.innerHTML = ICON.refresh + ' Sinkron'; });
         });
         v.querySelectorAll('[data-wp]').forEach(function (n) {
@@ -947,7 +1025,7 @@
   function boot() {
     if (!state.token) return renderLogin();
     root.innerHTML = '';
-    api('users').then(function (r) { state.users = r.users; }).catch(function () {}).then(route);
+    read('users').then(function (r) { state.users = r.users; }).catch(function () {}).then(function () { route(); setTimeout(prefetch, 1500); });
   }
 
   window.addEventListener('hashchange', function () { if (state.token) route(); });
