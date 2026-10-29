@@ -147,7 +147,7 @@
   var wpPosts = [
     ['Software HRIS Terbaik 2026: Perbandingan Lengkap', 'future', 2, '09:00', 'Rina', 'HRIS'],
     ['Cara Menghitung PPh 21 TER untuk Karyawan Baru', 'future', 4, '10:00', 'Dimas', 'Payroll'],
-    ['Talent Management: Pengertian, Proses, dan Contoh', 'future', 7, '09:00', 'Rina', 'Talent'],
+    ['Talent Management: Definition, Process, and Examples', 'future', 7, '09:00', 'Rina', 'Talent'],
     ['Aplikasi Absensi Online untuk Tim Lapangan', 'future', 9, '13:00', 'Dimas', 'Absensi'],
     ['Succession Planning: Panduan untuk HR', 'future', 14, '09:00', 'Rina', 'Talent'],
     ['UMP 2027 Seluruh Provinsi', 'future', -1, '08:00', 'Dimas', 'Payroll'],
@@ -162,7 +162,7 @@
     var day = fmt(addDays(today, w[2]));
     var slug = w[0].toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     return { id: String(500 + i), title: w[0], status: w[1], date: day + ' ' + w[3], link: 'https://wp.linovhr.com/' + slug + '/', author: w[4], categories: w[5],
-      slug: slug, public_url: SITE + '/blog/' + slug + '/', live: w[1] === 'publish' ? (i === 6 ? 'HTTP 404' : 'live') : '',
+      lang: /Definition/.test(w[0]) ? 'en' : 'id', slug: slug, public_url: SITE + '/blog/' + slug + '/', live: '',
       modified: fmt(addDays(today, Math.min(0, w[2]))) + ' 15:20', status_label: WP_LABEL[w[1]], edit_link: 'https://wp.linovhr.com/wp-admin/post.php?post=' + (500 + i) + '&action=edit' };
   });
   function wpListRes() { return { configured: true, posts: wpPosts, lastSync: stamp, canManage: true, now: nowStr() }; }

@@ -601,7 +601,7 @@
               var missed = wpMissed(p, now), notLive = wpNotLive(p);
               var cls = missed ? 'wp-missed' : notLive ? 'wp-notlive' : 'wp-' + p.status;
               var drag = canDrag && p.status === 'future' ? ' draggable="true"' : '';
-              return '<span class="chip ' + cls + '" data-wp="' + esc(p.id) + '"' + drag + ' title="' + esc(wpTime(p) + ' · ' + p.title + ' · ' + (missed ? 'Gagal terbit' : notLive ? 'Terbit di WordPress, belum tayang di website' : p.status_label)) + '"><span class="tm">' + esc(wpTime(p)) + '</span>' + esc(p.title) + '</span>';
+              return '<span class="chip ' + cls + '" data-wp="' + esc(p.id) + '"' + drag + ' title="' + esc(wpTime(p) + ' · ' + p.title + ' · ' + (missed ? 'Gagal terbit' : notLive ? 'Terbit di WordPress, belum tayang di website' : p.status_label)) + '"><span class="tm">' + esc(wpTime(p)) + '</span>' + (p.lang && p.lang !== 'id' ? '<span class="lang">' + esc(String(p.lang).toUpperCase()) + '</span>' : '') + esc(p.title) + '</span>';
             }).join('') +
             dayPlans.map(function (c) { return '<span class="chip plan st-' + esc(c.status) + '" data-id="' + esc(c.id) + '" title="' + esc('Rencana: ' + c.title + ' · ' + c.status) + '">' + esc(c.title) + '</span>'; }).join('') + '</div>';
           if (i >= 34 && dd.getMonth() !== mo && dd.getDay() === 0) break;
@@ -612,7 +612,7 @@
         var notLiveList = posts.filter(wpNotLive);
 
         v.innerHTML =
-          (!wp.configured ? '<div class="alert-box" style="margin-bottom:16px">WordPress belum dihubungkan. ' + (state.user.role === 'admin' ? 'Di spreadsheet, jalankan menu <b>Marketing Hub → 3. Hubungkan WordPress</b>.' : 'Minta admin menghubungkannya.') + ' Sementara ini kalender menampilkan rencana internal.</div>' : '') +
+          (!wp.configured ? '<div class="alert-box" style="margin-bottom:16px">WordPress belum dihubungkan. ' + (state.user.role === 'admin' ? 'Di spreadsheet, jalankan menu <b>Marketing Hub → 3. Hubungkan WordPress</b> lalu pasang snippet-nya.' : 'Minta admin menghubungkannya.') + ' Sementara ini kalender menampilkan rencana internal.</div>' : '') +
           (missedList.length ? '<div class="alert-box bad" style="margin-bottom:16px"><b>' + missedList.length + ' post gagal terbit</b> — jadwalnya sudah lewat tapi statusnya masih terjadwal di WordPress. Cek post tersebut di WordPress.</div>' : '') +
           (notLiveList.length ? '<div class="alert-box" style="margin-bottom:16px"><b>' + notLiveList.length + ' post belum tayang di website</b> — sudah terbit di WordPress, tetapi URL-nya di www.linovhr.com belum bisa diakses (' + esc(notLiveList.map(function (p) { return p.live; }).filter(function (x, i, a) { return a.indexOf(x) === i; }).join(', ')) + '). Biasanya perlu rebuild/revalidate Next.js.</div>' : '') +
           '<div class="card"><div class="cal-head"><button class="btn btn-sm" id="prevM" aria-label="Bulan sebelumnya">‹</button><h4>' + monthNames[mo] + ' ' + y + '</h4><button class="btn btn-sm" id="nextM" aria-label="Bulan berikutnya">›</button><button class="btn btn-sm" id="todayM">Hari ini</button>' +
@@ -626,7 +626,7 @@
           '<div class="muted small" style="margin-top:10px">Data diambil dari WordPress (otomatis tiap jam). Klik post untuk detail' + (canDrag ? '; seret post terjadwal ke tanggal lain untuk menggeser jadwal' : '') + '. Jadwal baru dibuat di WordPress.</div></div>' +
           (wp.configured ? '<div class="card section"><h3>Draft & menunggu review di WordPress <span class="muted">' + drafts.length + ' post</span></h3>' +
             (drafts.length ? '<ul class="list">' + drafts.slice(0, 30).map(function (p) {
-              return '<li><div class="main-txt"><a href="' + esc(p.edit_link) + '" target="_blank" rel="noopener"><b>' + esc(p.title) + '</b></a><div class="muted small">' + esc(p.author || '-') + (p.categories ? ' · ' + esc(p.categories) : '') + ' · diubah ' + dateID(p.modified) + '</div></div>' +
+              return '<li><div class="main-txt"><a href="' + esc(p.edit_link) + '" target="_blank" rel="noopener"><b>' + esc(p.title) + '</b></a>' + (p.lang && p.lang !== 'id' ? ' <span class="badge">' + esc(String(p.lang).toUpperCase()) + '</span>' : '') + '<div class="muted small">' + esc(p.author || '-') + (p.categories ? ' · ' + esc(p.categories) : '') + ' · diubah ' + dateID(p.modified) + '</div></div>' +
                 '<span class="badge ' + (p.status === 'pending' ? 'warn' : '') + '">' + esc(p.status_label) + '</span></li>';
             }).join('') + '</ul>' : '<div class="empty">Tidak ada draft</div>') + '</div>' : '');
 
@@ -713,6 +713,7 @@
       '<dt>' + (isFuture ? 'Jadwal terbit' : p.status === 'publish' ? 'Terbit' : 'Tanggal') + '</dt><dd>' + dateID(wpDay(p)) + ' · ' + esc(wpTime(p)) + '</dd>' +
       '<dt>Penulis</dt><dd>' + esc(p.author || '-') + '</dd>' +
       '<dt>Kategori</dt><dd>' + esc(p.categories || '-') + '</dd>' +
+      (p.lang ? '<dt>Bahasa</dt><dd>' + esc(String(p.lang).toUpperCase()) + '</dd>' : '') +
       '<dt>Terakhir diubah</dt><dd>' + dateID(p.modified) + ' · ' + esc(String(p.modified || '').slice(11, 16)) + '</dd>' +
       (p.status === 'publish' && p.live ? '<dt>Di website</dt><dd>' + (p.live === 'live' ? '<span class="badge good">Tayang</span>' : '<span class="badge warn">Belum tayang · ' + esc(p.live) + '</span>') + '</dd>' : '') +
       '</dl>' +
