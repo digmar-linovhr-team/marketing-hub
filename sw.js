@@ -1,6 +1,6 @@
 // Service worker: cache tampilan aplikasi agar cepat dibuka & bisa di-install.
 // Data dari API selalu diambil langsung (tidak di-cache).
-var CACHE = 'mhub-v9';
+var CACHE = 'mhub-v10';
 var ASSETS = ['./', './index.html', './styles.css', './app.js', './charts.js', './mock.js', './config.js', './manifest.json', './icons/icon-192.png'];
 
 self.addEventListener('install', function (e) {
@@ -17,11 +17,13 @@ self.addEventListener('fetch', function (e) {
   var url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return; // API & font lewat jaringan
   // network-first: selalu coba versi terbaru, pakai cache saat offline
+  // selalu cek versi terbaru ke server (lewati cache HTTP GitHub Pages yang bisa 10 menit)
+  var req = e.request.mode === 'navigate' ? e.request : new Request(e.request.url, { cache: 'no-cache', credentials: 'same-origin' });
   e.respondWith(
-    fetch(e.request).then(function (res) {
+    fetch(req).then(function (res) {
       var copy = res.clone();
       caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
       return res;
-    }).catch(function () { return caches.match(e.request).then(function (r) { return r || caches.match('./index.html'); }); })
+    }).catch(function () { return caches.match(e.request, { ignoreSearch: true }).then(function (r) { return r || caches.match('./index.html'); }); })
   );
 });
