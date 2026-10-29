@@ -143,6 +143,50 @@
     document.execCommand('copy'); ta.remove(); toast('Disalin ke clipboard');
   }
 
+  // Dropdown kustom: tampilan tertutup seperti select berlabel, daftar pilihan mengikuti gaya aplikasi
+  function mselect(host, opt) {
+    var cur = opt.value;
+    function labelOf(v) { var o = opt.options.filter(function (x) { return x.value === v; })[0]; return o ? o.label : ''; }
+    host.innerHTML = '<div class="msel"><button type="button" class="msel-btn" aria-haspopup="listbox" aria-expanded="false">' +
+      '<span class="select-label">' + esc(opt.label) + '</span><span class="msel-val"></span>' +
+      '<svg class="msel-chev" width="12" height="8" viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+      '<div class="msel-menu hidden" role="listbox" aria-label="' + esc(opt.label) + '"></div></div>';
+    var btn = host.querySelector('.msel-btn'), menu = host.querySelector('.msel-menu'), val = host.querySelector('.msel-val');
+    var active = 0;
+    function render() {
+      val.textContent = labelOf(cur);
+      menu.innerHTML = opt.options.map(function (o, i) {
+        var sel = o.value === cur;
+        return '<div class="msel-opt' + (sel ? ' sel' : '') + (i === active ? ' act' : '') + '" role="option" aria-selected="' + sel + '" data-i="' + i + '">' +
+          '<span class="msel-check" aria-hidden="true">' + (sel ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>' : '') + '</span>' +
+          '<span class="msel-txt">' + esc(o.label) + '</span>' + (o.count != null ? '<span class="msel-n">' + num(o.count) + '</span>' : '') + '</div>';
+      }).join('');
+    }
+    function open() {
+      active = Math.max(0, opt.options.findIndex(function (o) { return o.value === cur; }));
+      render(); menu.classList.remove('hidden'); btn.setAttribute('aria-expanded', 'true');
+      setTimeout(function () { document.addEventListener('mousedown', outside); document.addEventListener('keydown', keys); }, 0);
+    }
+    function close() {
+      menu.classList.add('hidden'); btn.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', keys);
+    }
+    function choose(i) { cur = opt.options[i].value; close(); render(); btn.focus(); if (opt.onChange) opt.onChange(cur); }
+    function outside(e) { if (!host.contains(e.target)) close(); }
+    function keys(e) {
+      if (e.key === 'Escape') { e.preventDefault(); close(); btn.focus(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(opt.options.length - 1, active + 1); render(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); render(); }
+      else if (e.key === 'Enter') { e.preventDefault(); choose(active); }
+    }
+    btn.addEventListener('click', function () { if (menu.classList.contains('hidden')) open(); else close(); });
+    btn.addEventListener('keydown', function (e) { if ((e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') && menu.classList.contains('hidden')) { e.preventDefault(); open(); } });
+    menu.addEventListener('click', function (e) { var o = e.target.closest('.msel-opt'); if (o) choose(Number(o.getAttribute('data-i'))); });
+    menu.addEventListener('mousemove', function (e) { var o = e.target.closest('.msel-opt'); if (o && Number(o.getAttribute('data-i')) !== active) { active = Number(o.getAttribute('data-i')); menu.querySelectorAll('.msel-opt').forEach(function (n, i) { n.classList.toggle('act', i === active); }); } });
+    render();
+    return { set: function (v) { cur = v; render(); }, update: function (options) { opt.options = options; render(); } };
+  }
+
   var ICON = {
     dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
     gsc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M8 13l2-2 2 2 3-3"/></svg>',
@@ -403,14 +447,18 @@
         '<div class="card"><h3>Impresi harian</h3><div id="chI"></div></div></div>' +
         '<div class="card section"><div class="toolbar"><div class="seg" id="tabs">' +
         '<button data-t="pages">Halaman</button><button data-t="queries">Query</button><button data-t="watch">Keyword pantauan</button></div>' +
-        '<div class="spacer"></div><div class="select-wrap" id="fStatusWrap"><span class="select-label">Status</span><select id="fStatus" aria-label="Status halaman"><option>Semua</option><option>Decay</option><option>Naik</option><option>Baru</option><option>Stabil</option></select></div>' +
+        '<div class="spacer"></div><div id="fStatusWrap"></div>' +
         '<input type="search" id="fSearch" placeholder="Cari…"></div><div id="tbl"></div></div>';
 
       MChart.line(document.getElementById('chC'), d.daily.map(function (x) { return { x: x.date, y: Number(x.clicks) }; }), { label: 'Klik' });
       MChart.line(document.getElementById('chI'), d.daily.map(function (x) { return { x: x.date, y: Number(x.impressions) }; }), { label: 'Impresi' });
 
-      var fStatus = document.getElementById('fStatus'), fSearch = document.getElementById('fSearch');
-      fStatus.value = filt;
+      var fStatus = { value: filt }, fSearch = document.getElementById('fSearch');
+      mselect(document.getElementById('fStatusWrap'), {
+        label: 'Status', value: filt,
+        options: ['Semua', 'Decay', 'Naik', 'Baru', 'Stabil'].map(function (x) { return { value: x, label: x }; }),
+        onChange: function (v) { fStatus.value = v; draw(); }
+      });
 
       function draw() {
         document.querySelectorAll('#tabs button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-t') === tab); });
@@ -466,7 +514,6 @@
         }
       }
       document.querySelectorAll('#tabs button').forEach(function (b) { b.addEventListener('click', function () { tab = b.getAttribute('data-t'); draw(); }); });
-      fStatus.addEventListener('change', draw);
       fSearch.addEventListener('input', draw);
       draw();
     });
@@ -560,11 +607,11 @@
         var list = base();
         var count = function (id) { return list.filter(function (a) { return !id || a.competitor_id === id; }).length; };
         var box = document.getElementById('compFilter');
-        box.innerHTML = '<div class="select-wrap"><span class="select-label">Kompetitor</span><select id="fComp" aria-label="Kompetitor">' +
-          [{ id: '', name: 'Semua' }].concat(d.competitors).map(function (c) {
-            return '<option value="' + esc(c.id) + '"' + (compFilter.comp === c.id ? ' selected' : '') + '>' + esc(c.name) + ' (' + num(count(c.id)) + ')</option>';
-          }).join('') + '</select></div>';
-        document.getElementById('fComp').addEventListener('change', function (e) { compFilter.comp = e.target.value; drawTable(); });
+        mselect(box, {
+          label: 'Kompetitor', value: compFilter.comp,
+          options: [{ id: '', name: 'Semua' }].concat(d.competitors).map(function (c) { return { value: c.id, label: c.name, count: count(c.id) }; }),
+          onChange: function (v) { compFilter.comp = v; drawTable(); }
+        });
       }
       function drawTable() {
         var q = compFilter.q.trim().toLowerCase();
